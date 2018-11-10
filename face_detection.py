@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import imutils
 import math
+from scipy import stats
 
 def face_detect(im, debug=False):
     height, width = im.shape[:2]
@@ -30,123 +31,143 @@ def face_detect(im, debug=False):
     #cv.imshow('Dilated', mask)
     mask2 = cv.erode(mask, kernel, iterations = 1)
     mask3 = cv.GaussianBlur(mask, (3, 3), 0)
-    
 
     # Find the contours
     im2, ctrs, hierarchy = cv.findContours(mask3, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-    #all_c = cv.drawContours(im.copy(), contours, -1, (0,255,0), 1)
-    contours = []
+    all_c = cv.drawContours(im.copy(), ctrs, -1, (0,255,0), 1)
+    cv.imshow('W outliers', all_c)
+ 
+    # Clean the data before trying to find outliers
+    contours_wo_small = removeTooSmallCtrs(ctrs)
 
-    # TODO : remove the outlier contour
-    # in here, the contour AREAS without outlier are returned
+    # Remove outliers
     print("####OUTLIERS ####")
-    contours = removeOutliers(ctrs)
+    #contours = removeOutliers(contours_wo_small)
+    #contours = removeOutliers(contours_wo_small, "sd")
+    contours = removeOutliers(contours_wo_small, "z-score")
+    #contours = removeOutliers(contours_wo_small, "iqr")
 
-    '''
-    for c in ctrs:
-        contours_w_outliers = cv.drawContours(im.copy(), c, -1, (0,0,255), 2)
-    for c in contours:
-        ctrs_without_outliers = cv.drawContours(im.copy(), c, -1, (0,255,0), 2)
-        
-    cv.imshow('W outliers', contours_w_outliers)
-    cv.imshow('Without outliers', ctrs_without_outliers)
-    '''
+    # Find the contours
+    c_wo_outliers = cv.drawContours(im.copy(), contours, -1, (0,255,0), 1)
+    cv.imshow('Without outliers', c_wo_outliers)
 
-    for i, c in enumerate(ctrs): 
-        im_outliers = im.copy()    
+    im_outliers = im.copy()
+    for c in ctrs:          
         try:
             ellipse = cv.fitEllipse(c)
         except:
             print("Contour has not enough point")
         cv.ellipse(im_outliers, ellipse, (0,0,255), 2)
-        #cv.imshow('W outliers' + str(i), im_outliers)
-         
-    '''
-    mean = 0
-    areas = []
-    for i, c in enumerate(contours):
+
+    im_wo_outliers = im.copy()
+    for c in contours:        
         try:
-            (x, y), (MA, ma), angle = cv.fitEllipse(c)
-            mean += math.pi * MA * ma
-            areas.append(math.pi * MA * ma)
+            ellipse = cv.fitEllipse(c)
         except:
             print("Contour has not enough point")
+        cv.ellipse(im_wo_outliers, ellipse, (0,0,255), 2)
 
-    mean = mean/(i+1)
+    return im_wo_outliers, im_outliers
 
-    for c in contours:
-        try:
-            (x, y), (MA, ma), angle = cv.fitEllipse(c)
-        except:
-            print("Contour has not enough point")
-        if((mean - (mean - min(areas))) <= (math.pi * MA * ma) or \
-            ((mean + (mean - max(areas))) <= (math.pi * MA * ma))):
-            # Draw
-            cv.ellipse(im, ((x, y), (MA, ma), angle), (0,0,255), 2)
-    '''
+def removeTooSmallCtrs(ctrs):
+    contours = []
+    for c in ctrs:    
+        if(cv.contourArea(c) > 500):
+            contours.append(c)       
+    return contours 
 
-    for c in contours:
-        try:
-            (x, y), (MA, ma), angle = cv.fitEllipse(c)
-        except:
-            print("Contour has not enough point")
-        # Draw
-        cv.ellipse(im, ((x, y), (MA, ma), angle), (0,0,255), 2)
-
-    return im, im_outliers
-
-def removeOutliers(ctrs):
+def removeOutliers(ctrs, method='mean'):
     # Stop searchin for outliers if not enough points
     if(len(ctrs) < 3):
         return ctrs
+
     # The list of contours to be returned without outliers
     contours = []
 
     # Calculate the contours areas
-    ctrs_areas = []
-    index_to_remove = []
+    areas = []
     for i, c in enumerate(ctrs):    
         area = cv.contourArea(c)
-        ctrs_areas.append(area) 
-        # Clean the data before trying to find outliers
-        #if(area > 500):    
-            #ctrs_areas.append(area)     
-        if(area < 500):
-            index_to_remove.append(i)
+        areas.append(area) 
 
-    # Calculate mean, median, etc..
-    mean = sum(ctrs_areas)/len(ctrs_areas)
-    q25, median, q75 = np.percentile(ctrs_areas, [25, 50, 75])
-    iqr = q75 - q25
-    threshold = 1.8*iqr
+    # Remove outliers
+    if(method == 'mean'):
+        contours_temp = ctrs.copy()
+        mean = np.mean(areas)
+        for c in ctrs:
+            area = cv.contourArea(c)
+            if((mean - (mean - min(areas))) >= (area) or \
+                ((mean + (mean - max(areas))) >= (area))):
+                # Remove area to recalculate mean next iter
+                areas.remove(area)
+                # Remove the corresponding contour
+                contours_temp.remove(c)
+                # update the stats
+                mean = np.mean(areas)     
+        contours = contours_temp
+    elif(method == 'sd'):
+        contours_temp = ctrs.copy()
+        mean = np.mean(areas)
+        sd = np.std(areas, axis=0)
+        for c in ctrs:
+            area = cv.contourArea(c)
+            if(area < (mean - 2 * sd) or area > (mean + 2 * sd)):
+                areas.remove(area)
+                contours_temp.remove(c)
+        contours = contours_temp
+    elif(method == 'z-score'):
+        contours_temp = ctrs.copy()
+        zscores = stats.zscore(areas)
+        print(zscores)
+        thresh = -1.5
+        for i, c in enumerate(ctrs):
+            area = cv.contourArea(c)
+            # Not an outlier
+            if(zscores[i] > abs(thresh) or  zscores[i] < thresh):
+                areas.remove(area)
+                contours_temp.remove(c)
+        contours = contours_temp
+    elif(method == 'iqr'):
+        areas.sort()
+        # TODO : Fix the method, as it should not
+        # loop through every value
+        contours_temp = ctrs.copy()
 
-    # Loop over the areas and remove outliers
-    # Keep only the contours corresponding to 
-    # the area that isn't an outlier
-    ctrs_temp = []
-    for i, area in enumerate(ctrs_areas):
-        # Not an outlier
-        if((area - mean) <= threshold):
-            # TODO : Don't use i from areas, because some of them has been
-            # removed. So the index is not the same as contours
-            ctrs_temp.append(ctrs[i])
-    for i in index_to_remove:
-        # TODO : create a new list, from the one we have without the
-        # value that have index_to_remove
-        pass
-    for i, ctr in enumerate(ctrs_temp):
-        if(not (i in index_to_remove)):
-            # Add to the list
-            contours.append(ctr)
+        # Calculate mean, median, etc..
+        mean = np.mean(areas)
+        q25, median, q75 = np.percentile(areas, [25, 50, 75])
+        iqr = q75 - q25
+        threshold = 1.5*iqr
 
+        # Loop over the areas and remove outliers
+        # Keep only the contours corresponding to 
+        # the area that isn't an outlier
+        for c in ctrs:
+            area = cv.contourArea(c)
+            # Not an outlier
+            if((area - mean) <= threshold):
+                areas.remove(area)
+                contours_temp.remove(c)
+                # Update the stats
+                try:
+                    mean = np.mean(areas)
+                    q25, median, q75 = np.percentile(areas, [25, 50, 75])
+                    iqr = q75 - q25
+                    threshold = 1.5*iqr
+                except:
+                    print("No contour available")
+                    pass
+        contours = contours_temp
     return contours
 
 def main():
-    for i in range(1, 6):
+    for i in range(1, 11):
         im = cv.imread('photo_' + str(i) + '.jpg')
         print("##### FACE " + str(i) + " #####")
         res, im_outliers = face_detect(im)
-        cv.imshow('Faces' + str(i), np.concatenate([im_outliers, res])) 
+        #cv.imshow('Faces' + str(i), np.concatenate([im_outliers, res]))
+        cv.imshow('Faces' + str(i), np.concatenate((im_outliers, res), axis=1))
+        
     cv.waitKey(0)
     cv.destroyAllWindows()
 
