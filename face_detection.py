@@ -13,8 +13,12 @@ def face_detect(im, debug=False):
     hsv = cv.cvtColor(im, cv.COLOR_BGR2HSV)
 
     # Define the lower and upper value for our mask
+    ###### BEST VALUES YET, DONT DELETE  ###########
     FACE_MIN = np.array([0, 48, 80], np.uint8)
     FACE_MAX = np.array([20, 255, 255], np.uint8)
+    ################################################
+    #FACE_MIN = np.array([0, 49, 82], np.uint8)
+    #FACE_MAX = np.array([22, 245, 255], np.uint8)
 
     # Display the mask
     mask = cv.inRange(hsv, FACE_MIN, FACE_MAX)
@@ -49,7 +53,7 @@ def face_detect(im, debug=False):
 
     # Find the contours
     c_wo_outliers = cv.drawContours(im.copy(), contours, -1, (0,255,0), 1)
-    cv.imshow('Without outliers', c_wo_outliers)
+    #cv.imshow('Without outliers', c_wo_outliers)
 
     im_outliers = im.copy()
     for c in ctrs:          
@@ -119,7 +123,7 @@ def removeOutliers(ctrs, method='mean'):
         contours_temp = ctrs.copy()
         zscores = stats.zscore(areas)
         print(zscores)
-        thresh = -1.5
+        thresh = -1.3
         for i, c in enumerate(ctrs):
             area = cv.contourArea(c)
             # Not an outlier
@@ -162,10 +166,9 @@ def removeOutliers(ctrs, method='mean'):
 
 def main():
     for i in range(1, 11):
-        im = cv.imread('photo_' + str(i) + '.jpg')
+        im = cv.imread('images/photo_' + str(i) + '.jpg')
         print("##### FACE " + str(i) + " #####")
         res, im_outliers = face_detect(im)
-        #cv.imshow('Faces' + str(i), np.concatenate([im_outliers, res]))
         cv.imshow('Faces' + str(i), np.concatenate((im_outliers, res), axis=1))
         
     cv.waitKey(0)
