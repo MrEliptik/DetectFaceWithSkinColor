@@ -2,7 +2,7 @@
 This code tries to detect a face based only a the skin color
 
 ## Examples 
-When it woks well
+When it works well
 
 ![alt text](https://raw.githubusercontent.com/MrEliptik/DetectFaceWithSkinColor/master/example/face_1.png)
 ![alt text](https://raw.githubusercontent.com/MrEliptik/DetectFaceWithSkinColor/master/example/face_2.png)
