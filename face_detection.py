@@ -133,8 +133,6 @@ def removeOutliers(ctrs, method='mean'):
         contours = contours_temp
     elif(method == 'iqr'):
         areas.sort()
-        # TODO : Fix the method, as it should not
-        # loop through every value
         contours_temp = ctrs.copy()
 
         # Calculate mean, median, etc..
@@ -160,7 +158,6 @@ def removeOutliers(ctrs, method='mean'):
                     threshold = 1.5*iqr
                 except:
                     print("No contour available")
-                    pass
         contours = contours_temp
     return contours
 
@@ -176,3 +173,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
